@@ -46,10 +46,9 @@ include(cmake/Dependencies.cmake)
 # As we add modules (crypto, core, blockchain, etc.), we'll add their .cpp
 # files to this list.
 add_library(titancore_lib STATIC
-    # For now, we have no .cpp source files in the library yet.
-    # We'll add them as we build each module.
-    # CMake requires at least one source file, so we create a placeholder.
-    src/titancore_lib.cpp
+    # --- Crypto module ---
+    src/crypto/hash.cpp
+    src/crypto/keys.cpp
 )
 
 # Tell the compiler where to find our header files.
@@ -65,6 +64,8 @@ target_include_directories(titancore_lib PUBLIC
 target_link_libraries(titancore_lib PUBLIC
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    OpenSSL::Crypto          # SHA-256 hashing (libcrypto)
+    secp256k1                # Elliptic curve key ops + ECDSA
 )
 
 # --- Define the Main Executable -----------------------------------------------

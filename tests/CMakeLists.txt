@@ -13,6 +13,8 @@
 
 add_executable(titancore_tests
     test_main.cpp
+    crypto/test_hash.cpp
+    crypto/test_keys.cpp
 )
 
 # Link against GoogleTest and our library.

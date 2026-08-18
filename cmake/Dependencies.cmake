@@ -14,6 +14,38 @@
 
 include(FetchContent)
 
+# --- OpenSSL (Cryptographic Hashing) ------------------------------------------
+# OpenSSL is a system-installed library — we don't download it, we find it.
+#
+# find_package() searches for libraries already installed on your system.
+# REQUIRED means the build will FAIL if OpenSSL isn't found.
+#
+# On macOS with Homebrew, OpenSSL is typically at /opt/homebrew/opt/openssl.
+# We set OPENSSL_ROOT_DIR as a hint so CMake can find it, since macOS ships
+# with LibreSSL by default, and Homebrew's OpenSSL isn't in the default path.
+if(APPLE)
+    set(OPENSSL_ROOT_DIR /opt/homebrew/opt/openssl)
+endif()
+find_package(OpenSSL REQUIRED)
+
+# --- secp256k1 (Elliptic Curve Cryptography) ----------------------------------
+# Bitcoin Core's library for secp256k1 elliptic curve operations.
+# Used for: key generation, ECDSA signing, ECDSA verification.
+#
+# This is the SAME library used by Bitcoin and Ethereum clients.
+# We disable tests/benchmarks/exhaustive tests to keep build times short.
+# https://github.com/bitcoin-core/secp256k1
+set(SECP256K1_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SECP256K1_BUILD_EXHAUSTIVE_TESTS OFF CACHE BOOL "" FORCE)
+set(SECP256K1_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    secp256k1
+    GIT_REPOSITORY https://github.com/bitcoin-core/secp256k1.git
+    GIT_TAG        v0.6.0
+    GIT_SHALLOW    TRUE
+)
+
 # --- spdlog (Logging) ---------------------------------------------------------
 # Fast, header-only C++ logging library.
 # We use it for structured logging across all TitanCore modules.
@@ -51,4 +83,4 @@ FetchContent_Declare(
 # --- Download and make all dependencies available ---
 # This is where the actual downloading happens (on first cmake configure).
 # Subsequent configures use the cached versions in build/_deps/.
-FetchContent_MakeAvailable(spdlog json googletest)
+FetchContent_MakeAvailable(spdlog json googletest secp256k1)
