@@ -49,6 +49,8 @@ add_library(titancore_lib STATIC
     # --- Crypto module ---
     src/crypto/hash.cpp
     src/crypto/keys.cpp
+    # --- Core module ---
+    src/core/transaction.cpp
 )
 
 # Tell the compiler where to find our header files.

@@ -4,22 +4,20 @@
 //
 // This is the main() function — where the TitanCore node process starts.
 //
-// Right now it demonstrates the crypto module by:
-//   1. Generating a secp256k1 key pair
-//   2. Deriving a blockchain address
-//   3. Signing a message hash
-//   4. Verifying the signature
+// Right now it demonstrates the transaction module by:
+//   1. Creating two "wallets" (key pairs)
+//   2. Creating a signed transaction (Alice sends 50 ODM to Bob)
+//   3. Displaying the full transaction as JSON
+//   4. Verifying the transaction
+//   5. Showing that tampering is detected
 //
-// In future milestones, this will evolve into the actual node process:
-//   - Parse command-line arguments
-//   - Initialize storage, load the blockchain
-//   - Start P2P networking and RPC server
-//   - Enter the main event loop
+// In future milestones, this will evolve into the actual node process.
 // =============================================================================
 
 #include "titancore/common/version.hpp"
 #include "titancore/crypto/hash.hpp"
 #include "titancore/crypto/keys.hpp"
+#include "titancore/core/transaction.hpp"
 #include <spdlog/spdlog.h>
 
 int main() {
@@ -31,44 +29,58 @@ int main() {
                  titancore::CURRENCY_NAME, titancore::CURRENCY_SYMBOL);
     spdlog::info("=============================================");
 
-    // ---- Crypto Module Demo ----
-
     using namespace titancore;
     using namespace titancore::crypto;
+    using namespace titancore::core;
 
-    // Step 1: Generate a key pair
-    spdlog::info("");
-    spdlog::info("[Crypto Demo] Generating secp256k1 key pair...");
-    KeyPair kp = generateKeyPair();
-    spdlog::info("  Private Key: {}", toHex(kp.privateKey));
-    spdlog::info("  Public Key:  {}", toHex(kp.publicKey));
-
-    // Step 2: Derive an address
-    Address addr = deriveAddress(kp.publicKey);
-    spdlog::info("  Address:     {}", toHex(addr));
-
-    // Step 3: Hash a message and sign it
-    std::string message = "Transfer 50 ODM from Alice to Bob";
-    Hash msgHash = sha256(message);
-    spdlog::info("");
-    spdlog::info("[Crypto Demo] Signing message: \"{}\"", message);
-    spdlog::info("  Message Hash: {}", toHex(msgHash));
-
-    Signature sig = sign(msgHash, kp.privateKey);
-    spdlog::info("  Signature:    {}", toHex(sig));
-
-    // Step 4: Verify the signature
-    bool valid = verify(msgHash, sig, kp.publicKey);
-    spdlog::info("");
-    spdlog::info("[Crypto Demo] Signature valid: {}", valid ? "YES" : "NO");
-
-    // Step 5: Show that tampering breaks verification
-    Hash tamperedHash = sha256("Transfer 5000 ODM from Alice to Bob");
-    bool tamperedValid = verify(tamperedHash, sig, kp.publicKey);
-    spdlog::info("[Crypto Demo] Tampered message valid: {}", tamperedValid ? "YES" : "NO");
+    // ---- Step 1: Create two "wallets" ----
 
     spdlog::info("");
-    spdlog::info("Crypto module operational. Ready for Milestone 2: Transactions.");
+    spdlog::info("[Transaction Demo] Creating wallets...");
+
+    KeyPair alice = generateKeyPair();
+    Address aliceAddr = deriveAddress(alice.publicKey);
+    spdlog::info("  Alice's address: {}", toHex(aliceAddr));
+
+    KeyPair bob = generateKeyPair();
+    Address bobAddr = deriveAddress(bob.publicKey);
+    spdlog::info("  Bob's address:   {}", toHex(bobAddr));
+
+    // ---- Step 2: Alice sends 50 ODM to Bob ----
+
+    spdlog::info("");
+    spdlog::info("[Transaction Demo] Alice sends 50 ODM to Bob...");
+
+    Transaction tx = createTransaction(alice, bobAddr, 50, 0);
+
+    spdlog::info("  Transaction Hash (txid): {}", toHex(tx.hash));
+    spdlog::info("  Nonce: {}", tx.nonce);
+    spdlog::info("  Timestamp: {}", tx.timestamp);
+
+    // ---- Step 3: Display the full transaction JSON ----
+
+    spdlog::info("");
+    spdlog::info("[Transaction Demo] Full transaction JSON:");
+    nlohmann::json txJson = toJson(tx);
+    spdlog::info("{}", txJson.dump(2));  // Pretty-print with 2-space indent
+
+    // ---- Step 4: Verify the transaction ----
+
+    spdlog::info("");
+    bool valid = verifyTransaction(tx);
+    spdlog::info("[Transaction Demo] Transaction valid: {}", valid ? "YES" : "NO");
+
+    // ---- Step 5: Show tampering detection ----
+
+    spdlog::info("");
+    spdlog::info("[Transaction Demo] Tampering with the amount (50 → 5000)...");
+    tx.amount = 5000;
+    bool tamperedValid = verifyTransaction(tx);
+    spdlog::info("[Transaction Demo] Tampered transaction valid: {}",
+                 tamperedValid ? "YES" : "NO");
+
+    spdlog::info("");
+    spdlog::info("Transaction module operational. Ready for Milestone 3: Blocks.");
 
     return 0;
 }
