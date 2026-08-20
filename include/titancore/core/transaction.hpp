@@ -146,7 +146,7 @@ nlohmann::json signableJson(const Transaction& tx);
 nlohmann::json toJson(const Transaction& tx);
 
 // Deserialize a transaction from its complete JSON representation.
-Transaction fromJson(const nlohmann::json& j);
+Transaction transactionFromJson(const nlohmann::json& j);
 
 } // namespace core
 } // namespace titancore

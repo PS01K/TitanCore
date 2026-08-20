@@ -178,7 +178,7 @@ TEST_F(TransactionTest, JsonRoundTrip) {
     // Serialize to JSON, then deserialize back — should produce
     // an identical transaction
     nlohmann::json j = toJson(tx);
-    Transaction restored = fromJson(j);
+    Transaction restored = transactionFromJson(j);
 
     EXPECT_EQ(restored.sender, tx.sender);
     EXPECT_EQ(restored.recipient, tx.recipient);
@@ -193,7 +193,7 @@ TEST_F(TransactionTest, JsonRoundTrip) {
 TEST_F(TransactionTest, DeserializedTransactionIsStillValid) {
     // A transaction serialized and deserialized should still pass verification
     nlohmann::json j = toJson(tx);
-    Transaction restored = fromJson(j);
+    Transaction restored = transactionFromJson(j);
     EXPECT_TRUE(verifyTransaction(restored));
 }
 

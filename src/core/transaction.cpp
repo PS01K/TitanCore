@@ -76,7 +76,7 @@ nlohmann::json toJson(const Transaction& tx) {
     return j;
 }
 
-Transaction fromJson(const nlohmann::json& j) {
+Transaction transactionFromJson(const nlohmann::json& j) {
     Transaction tx;
 
     // --- Decode signable fields ---
