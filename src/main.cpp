@@ -4,12 +4,12 @@
 //
 // This is the main() function — where the TitanCore node process starts.
 //
-// Right now it demonstrates the block module by:
-//   1. Creating a genesis block (Block 0)
-//   2. Creating a transaction (Alice sends 50 ODM to Bob)
-//   3. Creating Block 1 containing the transaction, linked to genesis
-//   4. Verifying the chain
-//   5. Showing that tampering is detected
+// Right now it demonstrates the blockchain module by:
+//   1. Initializing a blockchain with a genesis block
+//   2. Adding blocks with transactions
+//   3. Validating the entire chain
+//   4. Looking up a transaction by hash
+//   5. Showing that invalid blocks are rejected
 //
 // In future milestones, this will evolve into the actual node process.
 // =============================================================================
@@ -19,6 +19,7 @@
 #include "titancore/crypto/keys.hpp"
 #include "titancore/core/transaction.hpp"
 #include "titancore/core/block.hpp"
+#include "titancore/core/blockchain.hpp"
 #include <spdlog/spdlog.h>
 
 int main() {
@@ -37,70 +38,80 @@ int main() {
     // ---- Step 1: Create participants ----
 
     spdlog::info("");
-    spdlog::info("[Block Demo] Creating participants...");
+    spdlog::info("[Blockchain Demo] Creating participants...");
 
     KeyPair validator = generateKeyPair();
-    Address validatorAddr = deriveAddress(validator.publicKey);
-    spdlog::info("  Validator: {}", toHex(validatorAddr));
+    spdlog::info("  Validator: {}", toHex(deriveAddress(validator.publicKey)));
 
     KeyPair alice = generateKeyPair();
-    Address aliceAddr = deriveAddress(alice.publicKey);
-    spdlog::info("  Alice:     {}", toHex(aliceAddr));
+    spdlog::info("  Alice:     {}", toHex(deriveAddress(alice.publicKey)));
 
     KeyPair bob = generateKeyPair();
     Address bobAddr = deriveAddress(bob.publicKey);
     spdlog::info("  Bob:       {}", toHex(bobAddr));
 
-    // ---- Step 2: Create the genesis block ----
+    // ---- Step 2: Initialize the blockchain ----
 
     spdlog::info("");
-    spdlog::info("[Block Demo] Creating genesis block (Block 0)...");
+    Blockchain chain(validator);
+    spdlog::info("  Chain height: {}", chain.getHeight());
 
-    Block genesis = createGenesisBlock(validator);
-
-    spdlog::info("  Index:        {}", genesis.index);
-    spdlog::info("  Timestamp:    {}", genesis.timestamp);
-    spdlog::info("  Previous:     {}", toHex(genesis.previousHash));
-    spdlog::info("  Block Hash:   {}", toHex(genesis.hash));
-    spdlog::info("  Transactions: {}", genesis.transactions.size());
-    spdlog::info("  Valid:        {}", verifyBlock(genesis) ? "YES" : "NO");
-
-    // ---- Step 3: Create a transaction and put it in Block 1 ----
+    // ---- Step 3: Add blocks with transactions ----
 
     spdlog::info("");
-    spdlog::info("[Block Demo] Alice sends 50 ODM to Bob...");
+    spdlog::info("[Blockchain Demo] Adding blocks with transactions...");
 
-    Transaction tx = createTransaction(alice, bobAddr, 50, 0);
-    spdlog::info("  Tx Hash: {}", toHex(tx.hash));
+    // Block 1: Alice sends 50 ODM to Bob
+    Transaction tx1 = createTransaction(alice, bobAddr, 50, 0);
+    Block block1 = createBlock(validator, chain.getLatestBlock(), {tx1});
+    bool added1 = chain.addBlock(block1);
+    spdlog::info("  Block 1 added: {} (height: {})", added1 ? "YES" : "NO", chain.getHeight());
 
-    spdlog::info("");
-    spdlog::info("[Block Demo] Creating Block 1 (linked to genesis)...");
+    // Block 2: Alice sends 30 ODM to Bob
+    Transaction tx2 = createTransaction(alice, bobAddr, 30, 1);
+    Block block2 = createBlock(validator, chain.getLatestBlock(), {tx2});
+    bool added2 = chain.addBlock(block2);
+    spdlog::info("  Block 2 added: {} (height: {})", added2 ? "YES" : "NO", chain.getHeight());
 
-    Block block1 = createBlock(validator, genesis, {tx});
+    // Block 3: Alice sends 20 ODM to Bob
+    Transaction tx3 = createTransaction(alice, bobAddr, 20, 2);
+    Block block3 = createBlock(validator, chain.getLatestBlock(), {tx3});
+    bool added3 = chain.addBlock(block3);
+    spdlog::info("  Block 3 added: {} (height: {})", added3 ? "YES" : "NO", chain.getHeight());
 
-    spdlog::info("  Index:        {}", block1.index);
-    spdlog::info("  Previous:     {}", toHex(block1.previousHash));
-    spdlog::info("  Block Hash:   {}", toHex(block1.hash));
-    spdlog::info("  Transactions: {}", block1.transactions.size());
-    spdlog::info("  Valid:        {}", verifyBlock(block1) ? "YES" : "NO");
-
-    // ---- Step 4: Verify the chain linkage ----
-
-    spdlog::info("");
-    bool chainLinked = (block1.previousHash == genesis.hash);
-    spdlog::info("[Block Demo] Chain linked: Block 1 → Genesis: {}",
-                 chainLinked ? "YES" : "NO");
-
-    // ---- Step 5: Show tampering detection ----
+    // ---- Step 4: Validate the entire chain ----
 
     spdlog::info("");
-    spdlog::info("[Block Demo] Tampering: modifying transaction amount in Block 1...");
-    block1.transactions[0].amount = 5000;
-    spdlog::info("[Block Demo] Block 1 still valid: {}",
-                 verifyBlock(block1) ? "YES" : "NO");
+    bool valid = chain.validateChain();
+    spdlog::info("[Blockchain Demo] Full chain validation: {}", valid ? "PASSED" : "FAILED");
+
+    // ---- Step 5: Look up a transaction ----
 
     spdlog::info("");
-    spdlog::info("Block module operational. Ready for Milestone 4: Blockchain.");
+    spdlog::info("[Blockchain Demo] Looking up tx1 by hash...");
+    const Transaction* found = chain.findTransaction(tx1.hash);
+    if (found) {
+        spdlog::info("  Found! Amount: {} ODM, Nonce: {}", found->amount, found->nonce);
+    } else {
+        spdlog::info("  Not found!");
+    }
+
+    // ---- Step 6: Try to add an invalid block ----
+
+    spdlog::info("");
+    spdlog::info("[Blockchain Demo] Attempting to add an invalid block...");
+
+    // Create a block that links to genesis instead of the latest block
+    Block badBlock = createBlock(validator, chain.getBlock(0), {});
+    bool addedBad = chain.addBlock(badBlock);
+    spdlog::info("  Invalid block accepted: {}", addedBad ? "YES" : "NO");
+    if (!addedBad) {
+        spdlog::info("  Reason: {}", chain.getLastError());
+    }
+
+    spdlog::info("");
+    spdlog::info("Blockchain operational. Height: {}, Chain valid: {}",
+                 chain.getHeight(), chain.validateChain() ? "YES" : "NO");
 
     return 0;
 }

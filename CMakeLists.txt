@@ -52,6 +52,7 @@ add_library(titancore_lib STATIC
     # --- Core module ---
     src/core/transaction.cpp
     src/core/block.cpp
+    src/core/blockchain.cpp
 )
 
 # Tell the compiler where to find our header files.

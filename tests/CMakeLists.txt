@@ -17,6 +17,7 @@ add_executable(titancore_tests
     crypto/test_keys.cpp
     core/test_transaction.cpp
     core/test_block.cpp
+    core/test_blockchain.cpp
 )
 
 # Link against GoogleTest and our library.
