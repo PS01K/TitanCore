@@ -4,11 +4,12 @@
 //
 // This is the main() function — where the TitanCore node process starts.
 //
-// Right now it demonstrates the state manager by:
-//   1. Setting up genesis allocations (10,000 ODM per participant)
-//   2. Processing a block with transfers and showing balance changes
-//   3. Showing nonce evolution
-//   4. Demonstrating that an overspend is rejected
+// Right now it demonstrates the full transaction lifecycle:
+//   1. Users submit transactions to the mempool
+//   2. Validator pulls transactions and creates a block
+//   3. Block is added to the chain and state is updated
+//   4. Mempool cleans up mined transactions
+//   5. An overspend is rejected at the mempool level
 //
 // In future milestones, this will evolve into the actual node process.
 // =============================================================================
@@ -20,6 +21,7 @@
 #include "titancore/core/block.hpp"
 #include "titancore/core/blockchain.hpp"
 #include "titancore/core/state.hpp"
+#include "titancore/core/mempool.hpp"
 #include <spdlog/spdlog.h>
 
 int main() {
@@ -38,7 +40,7 @@ int main() {
     // ---- Step 1: Create participants ----
 
     spdlog::info("");
-    spdlog::info("[State Demo] Creating participants...");
+    spdlog::info("[Lifecycle Demo] Creating participants...");
 
     KeyPair validator = generateKeyPair();
     Address validatorAddr = deriveAddress(validator.publicKey);
@@ -52,84 +54,93 @@ int main() {
     Address bobAddr = deriveAddress(bob.publicKey);
     spdlog::info("  Bob:       {}", toHex(bobAddr));
 
-    // ---- Step 2: Initialize blockchain and state ----
+    // ---- Step 2: Initialize blockchain, state, and mempool ----
 
     spdlog::info("");
     Blockchain chain(validator);
 
-    // Genesis allocations: everyone gets 10,000 ODM
     AddressMap<uint64_t> allocations;
     allocations[aliceAddr] = 10000;
     allocations[bobAddr] = 10000;
     allocations[validatorAddr] = 10000;
     StateManager state(allocations);
 
-    // Show initial balances
-    spdlog::info("");
-    spdlog::info("[State Demo] Initial balances:");
-    spdlog::info("  Alice:     {} ODM (nonce: {})",
-                 state.getBalance(aliceAddr), state.getNonce(aliceAddr));
-    spdlog::info("  Bob:       {} ODM (nonce: {})",
-                 state.getBalance(bobAddr), state.getNonce(bobAddr));
-    spdlog::info("  Validator: {} ODM (nonce: {})",
-                 state.getBalance(validatorAddr), state.getNonce(validatorAddr));
-
-    // ---- Step 3: Process a block with transfers ----
+    Mempool mempool(state);
 
     spdlog::info("");
-    spdlog::info("[State Demo] Block 1: Alice sends 1500 ODM to Bob...");
+    spdlog::info("[Lifecycle Demo] Initial state:");
+    spdlog::info("  Alice: {} ODM | Bob: {} ODM | Mempool: {} pending",
+                 state.getBalance(aliceAddr), state.getBalance(bobAddr),
+                 mempool.size());
 
+    // ---- Step 3: Users submit transactions to mempool ----
+
+    spdlog::info("");
+    spdlog::info("[Lifecycle Demo] Submitting transactions to mempool...");
+
+    // Alice submits two sequential transactions (pending state tracking)
     Transaction tx1 = createTransaction(alice, bobAddr, 1500, 0);
-    Block block1 = createBlock(validator, chain.getLatestBlock(), {tx1});
+    Transaction tx2 = createTransaction(alice, bobAddr, 500, 1);
+    // Bob submits one transaction
+    Transaction tx3 = createTransaction(bob, aliceAddr, 800, 0);
+
+    mempool.addTransaction(tx1);
+    mempool.addTransaction(tx2);
+    mempool.addTransaction(tx3);
+
+    spdlog::info("  Mempool size: {}", mempool.size());
+    spdlog::info("  Alice pending balance: {} ODM (nonce: {})",
+                 mempool.getPendingBalance(aliceAddr),
+                 mempool.getPendingNonce(aliceAddr));
+    spdlog::info("  Bob pending balance: {} ODM (nonce: {})",
+                 mempool.getPendingBalance(bobAddr),
+                 mempool.getPendingNonce(bobAddr));
+
+    // ---- Step 4: Validator creates block from mempool ----
+
+    spdlog::info("");
+    spdlog::info("[Lifecycle Demo] Validator creating block from mempool...");
+
+    auto blockTxs = mempool.getTransactionsForBlock(100);
+    Block block1 = createBlock(validator, chain.getLatestBlock(), blockTxs);
+
+    // ---- Step 5: Block is mined → chain + state + mempool update ----
+
     chain.addBlock(block1);
     state.applyBlock(block1);
-
-    spdlog::info("  Alice:     {} ODM (nonce: {})",
-                 state.getBalance(aliceAddr), state.getNonce(aliceAddr));
-    spdlog::info("  Bob:       {} ODM (nonce: {})",
-                 state.getBalance(bobAddr), state.getNonce(bobAddr));
-
-    // ---- Step 4: Second block — Bob sends some back ----
+    mempool.removeMinedTransactions(block1);
+    mempool.revalidate();
 
     spdlog::info("");
-    spdlog::info("[State Demo] Block 2: Bob sends 500 ODM to Alice...");
-
-    Transaction tx2 = createTransaction(bob, aliceAddr, 500, 0);
-    Block block2 = createBlock(validator, chain.getLatestBlock(), {tx2});
-    chain.addBlock(block2);
-    state.applyBlock(block2);
-
-    spdlog::info("  Alice:     {} ODM (nonce: {})",
+    spdlog::info("[Lifecycle Demo] After block 1 mined:");
+    spdlog::info("  Alice: {} ODM (nonce: {})",
                  state.getBalance(aliceAddr), state.getNonce(aliceAddr));
-    spdlog::info("  Bob:       {} ODM (nonce: {})",
+    spdlog::info("  Bob:   {} ODM (nonce: {})",
                  state.getBalance(bobAddr), state.getNonce(bobAddr));
+    spdlog::info("  Mempool: {} pending", mempool.size());
+    spdlog::info("  Chain height: {}", chain.getHeight());
 
-    // ---- Step 5: Try to overspend ----
+    // ---- Step 6: Try to overspend — rejected at mempool level ----
 
     spdlog::info("");
-    spdlog::info("[State Demo] Block 3: Alice tries to send 99999 ODM (overspend)...");
+    spdlog::info("[Lifecycle Demo] Alice tries to send 99999 ODM (overspend)...");
 
-    Transaction tx3 = createTransaction(alice, bobAddr, 99999, 1);
-    Block block3 = createBlock(validator, chain.getLatestBlock(), {tx3});
-    chain.addBlock(block3);
-    bool applied = state.applyBlock(block3);
+    Transaction badTx = createTransaction(alice, bobAddr, 99999, 2);
+    bool accepted = mempool.addTransaction(badTx);
 
-    spdlog::info("  Block applied: {}", applied ? "YES" : "NO");
-    if (!applied) {
-        spdlog::info("  Reason: {}", state.getLastError());
+    spdlog::info("  Accepted by mempool: {}", accepted ? "YES" : "NO");
+    if (!accepted) {
+        spdlog::info("  Reason: {}", mempool.getLastError());
     }
-
-    // Balances should be unchanged
-    spdlog::info("  Alice:     {} ODM (unchanged)", state.getBalance(aliceAddr));
-    spdlog::info("  Bob:       {} ODM (unchanged)", state.getBalance(bobAddr));
 
     // ---- Summary ----
 
     spdlog::info("");
-    spdlog::info("State Manager operational. {} accounts tracked.",
-                 state.getAllAccounts().size());
-    spdlog::info("Chain height: {}, Chain valid: {}",
-                 chain.getHeight(), chain.validateChain() ? "YES" : "NO");
+    spdlog::info("Full lifecycle operational.");
+    spdlog::info("  Accounts: {} | Chain height: {} | Chain valid: {}",
+                 state.getAllAccounts().size(),
+                 chain.getHeight(),
+                 chain.validateChain() ? "YES" : "NO");
 
     return 0;
 }

@@ -54,6 +54,7 @@ add_library(titancore_lib STATIC
     src/core/block.cpp
     src/core/blockchain.cpp
     src/core/state.cpp
+    src/core/mempool.cpp
 )
 
 # Tell the compiler where to find our header files.
