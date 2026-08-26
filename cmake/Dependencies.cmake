@@ -80,7 +80,34 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
+# --- LevelDB (Key-Value Storage) ---------------------------------------------
+# A fast key-value storage library created by Jeff Dean and Sanjay Ghemawat
+# at Google (the same engineers behind MapReduce and BigTable).
+#
+# Originally used by Bitcoin Core for block/transaction indexing.
+# LevelDB uses an LSM-tree (Log-Structured Merge Tree) architecture:
+#   Writes → in-memory buffer (memtable)
+#   Background flush → sorted on-disk files (SSTables)
+#   Reads → check memtable first, then SSTables
+#
+# This gives excellent write throughput, which is ideal for blockchains
+# that are constantly appending new blocks.
+#
+# We disable tests, benchmarks, and installation to keep build times short.
+# https://github.com/google/leveldb
+set(LEVELDB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LEVELDB_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(LEVELDB_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    leveldb
+    GIT_REPOSITORY https://github.com/google/leveldb.git
+    GIT_TAG        1.23
+    GIT_SHALLOW    TRUE
+)
+
 # --- Download and make all dependencies available ---
 # This is where the actual downloading happens (on first cmake configure).
 # Subsequent configures use the cached versions in build/_deps/.
-FetchContent_MakeAvailable(spdlog json googletest secp256k1)
+FetchContent_MakeAvailable(spdlog json googletest secp256k1 leveldb)
+

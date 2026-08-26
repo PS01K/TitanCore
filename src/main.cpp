@@ -4,143 +4,189 @@
 //
 // This is the main() function — where the TitanCore node process starts.
 //
-// Right now it demonstrates the full transaction lifecycle:
-//   1. Users submit transactions to the mempool
-//   2. Validator pulls transactions and creates a block
-//   3. Block is added to the chain and state is updated
-//   4. Mempool cleans up mined transactions
-//   5. An overspend is rejected at the mempool level
+// Right now it demonstrates persistent storage:
+//   1. Build a chain with transactions
+//   2. Save everything to LevelDB
+//   3. Simulate a "restart" — new Blockchain/State objects
+//   4. Load from LevelDB and replay the chain
+//   5. Verify restored state matches the original
 //
 // In future milestones, this will evolve into the actual node process.
 // =============================================================================
 
 #include "titancore/common/version.hpp"
-#include "titancore/crypto/hash.hpp"
-#include "titancore/crypto/keys.hpp"
-#include "titancore/core/transaction.hpp"
 #include "titancore/core/block.hpp"
 #include "titancore/core/blockchain.hpp"
-#include "titancore/core/state.hpp"
 #include "titancore/core/mempool.hpp"
+#include "titancore/core/state.hpp"
+#include "titancore/core/transaction.hpp"
+#include "titancore/crypto/hash.hpp"
+#include "titancore/crypto/keys.hpp"
+#include "titancore/storage/storage.hpp"
 #include <spdlog/spdlog.h>
 
+#include <filesystem>
+
 int main() {
-    spdlog::set_level(spdlog::level::info);
+  spdlog::set_level(spdlog::level::info);
 
-    spdlog::info("=============================================");
-    spdlog::info("  {} v{}", titancore::PROJECT_NAME, titancore::VERSION_STRING);
-    spdlog::info("  Native Currency: {} ({})",
-                 titancore::CURRENCY_NAME, titancore::CURRENCY_SYMBOL);
-    spdlog::info("=============================================");
+  spdlog::info("=============================================");
+  spdlog::info("  {} v{}", titancore::PROJECT_NAME, titancore::VERSION_STRING);
+  spdlog::info("  Native Currency: {} ({})", titancore::CURRENCY_NAME,
+               titancore::CURRENCY_SYMBOL);
+  spdlog::info("=============================================");
 
-    using namespace titancore;
-    using namespace titancore::crypto;
-    using namespace titancore::core;
+  using namespace titancore;
+  using namespace titancore::crypto;
+  using namespace titancore::core;
+  using namespace titancore::storage;
 
-    // ---- Step 1: Create participants ----
+  // Use a temp directory for the demo database
+  std::string dbPath =
+      (std::filesystem::temp_directory_path() / "titancore_demo_db").string();
+  std::filesystem::remove_all(dbPath); // Start fresh
 
-    spdlog::info("");
-    spdlog::info("[Lifecycle Demo] Creating participants...");
+  // ---- Step 1: Create participants ----
 
-    KeyPair validator = generateKeyPair();
-    Address validatorAddr = deriveAddress(validator.publicKey);
-    spdlog::info("  Validator: {}", toHex(validatorAddr));
+  spdlog::info("");
+  spdlog::info("[Persistence Demo] Creating participants...");
 
-    KeyPair alice = generateKeyPair();
-    Address aliceAddr = deriveAddress(alice.publicKey);
-    spdlog::info("  Alice:     {}", toHex(aliceAddr));
+  KeyPair validator = generateKeyPair();
+  Address validatorAddr = deriveAddress(validator.publicKey);
+  spdlog::info("  Validator: {}", toHex(validatorAddr));
 
-    KeyPair bob = generateKeyPair();
-    Address bobAddr = deriveAddress(bob.publicKey);
-    spdlog::info("  Bob:       {}", toHex(bobAddr));
+  KeyPair alice = generateKeyPair();
+  Address aliceAddr = deriveAddress(alice.publicKey);
+  spdlog::info("  Alice:     {}", toHex(aliceAddr));
 
-    // ---- Step 2: Initialize blockchain, state, and mempool ----
+  KeyPair bob = generateKeyPair();
+  Address bobAddr = deriveAddress(bob.publicKey);
+  spdlog::info("  Bob:       {}", toHex(bobAddr));
 
-    spdlog::info("");
+  // Genesis allocations
+  AddressMap<uint64_t> allocations;
+  allocations[aliceAddr] = 10000;
+  allocations[bobAddr] = 10000;
+  allocations[validatorAddr] = 10000;
+
+  // ========================================================================
+  // PHASE 1: Build a chain and save to LevelDB
+  // ========================================================================
+
+  spdlog::info("");
+  spdlog::info("========== PHASE 1: Build and Save ==========");
+
+  {
     Blockchain chain(validator);
-
-    AddressMap<uint64_t> allocations;
-    allocations[aliceAddr] = 10000;
-    allocations[bobAddr] = 10000;
-    allocations[validatorAddr] = 10000;
     StateManager state(allocations);
+    Storage store(dbPath);
 
-    Mempool mempool(state);
+    // Save genesis block
+    store.saveBlock(chain.getBlock(0));
 
-    spdlog::info("");
-    spdlog::info("[Lifecycle Demo] Initial state:");
-    spdlog::info("  Alice: {} ODM | Bob: {} ODM | Mempool: {} pending",
-                 state.getBalance(aliceAddr), state.getBalance(bobAddr),
-                 mempool.size());
-
-    // ---- Step 3: Users submit transactions to mempool ----
-
-    spdlog::info("");
-    spdlog::info("[Lifecycle Demo] Submitting transactions to mempool...");
-
-    // Alice submits two sequential transactions (pending state tracking)
-    Transaction tx1 = createTransaction(alice, bobAddr, 1500, 0);
-    Transaction tx2 = createTransaction(alice, bobAddr, 500, 1);
-    // Bob submits one transaction
-    Transaction tx3 = createTransaction(bob, aliceAddr, 800, 0);
-
-    mempool.addTransaction(tx1);
-    mempool.addTransaction(tx2);
-    mempool.addTransaction(tx3);
-
-    spdlog::info("  Mempool size: {}", mempool.size());
-    spdlog::info("  Alice pending balance: {} ODM (nonce: {})",
-                 mempool.getPendingBalance(aliceAddr),
-                 mempool.getPendingNonce(aliceAddr));
-    spdlog::info("  Bob pending balance: {} ODM (nonce: {})",
-                 mempool.getPendingBalance(bobAddr),
-                 mempool.getPendingNonce(bobAddr));
-
-    // ---- Step 4: Validator creates block from mempool ----
-
-    spdlog::info("");
-    spdlog::info("[Lifecycle Demo] Validator creating block from mempool...");
-
-    auto blockTxs = mempool.getTransactionsForBlock(100);
-    Block block1 = createBlock(validator, chain.getLatestBlock(), blockTxs);
-
-    // ---- Step 5: Block is mined → chain + state + mempool update ----
-
+    // Block 1: Alice → Bob: 2000 ODM
+    Transaction tx1 = createTransaction(alice, bobAddr, 2000, 0);
+    Block block1 = createBlock(validator, chain.getLatestBlock(), {tx1});
     chain.addBlock(block1);
     state.applyBlock(block1);
-    mempool.removeMinedTransactions(block1);
-    mempool.revalidate();
+    store.saveBlock(block1);
 
-    spdlog::info("");
-    spdlog::info("[Lifecycle Demo] After block 1 mined:");
-    spdlog::info("  Alice: {} ODM (nonce: {})",
-                 state.getBalance(aliceAddr), state.getNonce(aliceAddr));
-    spdlog::info("  Bob:   {} ODM (nonce: {})",
-                 state.getBalance(bobAddr), state.getNonce(bobAddr));
-    spdlog::info("  Mempool: {} pending", mempool.size());
-    spdlog::info("  Chain height: {}", chain.getHeight());
+    // Block 2: Bob → Alice: 500 ODM
+    Transaction tx2 = createTransaction(bob, aliceAddr, 500, 0);
+    Block block2 = createBlock(validator, chain.getLatestBlock(), {tx2});
+    chain.addBlock(block2);
+    state.applyBlock(block2);
+    store.saveBlock(block2);
 
-    // ---- Step 6: Try to overspend — rejected at mempool level ----
+    // Save state and metadata
+    for (const auto &[addr, acct] : state.getAllAccounts()) {
+      store.saveAccountState(addr, acct);
+    }
+    store.saveChainHeight(chain.getHeight());
 
-    spdlog::info("");
-    spdlog::info("[Lifecycle Demo] Alice tries to send 99999 ODM (overspend)...");
+    spdlog::info("  Chain built: {} blocks", chain.getHeight());
+    spdlog::info("  Alice: {} ODM (nonce: {})", state.getBalance(aliceAddr),
+                 state.getNonce(aliceAddr));
+    spdlog::info("  Bob:   {} ODM (nonce: {})", state.getBalance(bobAddr),
+                 state.getNonce(bobAddr));
+    spdlog::info("  Saved to LevelDB at: {}", dbPath);
 
-    Transaction badTx = createTransaction(alice, bobAddr, 99999, 2);
-    bool accepted = mempool.addTransaction(badTx);
+    // chain, state, and store go out of scope — all destroyed
+  }
 
-    spdlog::info("  Accepted by mempool: {}", accepted ? "YES" : "NO");
-    if (!accepted) {
-        spdlog::info("  Reason: {}", mempool.getLastError());
+  spdlog::info("  [Objects destroyed — simulating node shutdown]");
+
+  // ========================================================================
+  // PHASE 2: "Restart" — Load from LevelDB and replay
+  // ========================================================================
+
+  spdlog::info("");
+  spdlog::info("========== PHASE 2: Load and Restore ==========");
+
+  {
+    Storage store(dbPath);
+
+    // Read chain height — tells us how many blocks to load
+    uint64_t height = store.loadChainHeight();
+    spdlog::info("  Stored chain height: {}", height);
+
+    // Replay: load each block and feed it through Blockchain + StateManager
+    // The genesis block is loaded first, then each subsequent block
+    // is validated and applied just like during normal operation.
+    auto genesisBlock = store.loadBlock(0);
+    if (!genesisBlock.has_value()) {
+      spdlog::error("  Failed to load genesis block!");
+      return 1;
     }
 
-    // ---- Summary ----
+    // Reconstruct the blockchain by replaying from genesis
+    // Note: we need the validator key to create the genesis.
+    // In a real node, the genesis block would be a hardcoded constant.
+    Blockchain chain(validator);
+    StateManager state(allocations);
 
+    // Replay blocks 1..N (genesis is already created by the constructor)
+    for (uint64_t i = 1; i < height; ++i) {
+      auto block = store.loadBlock(i);
+      if (!block.has_value()) {
+        spdlog::error("  Failed to load block {}!", i);
+        return 1;
+      }
+      chain.addBlock(*block);
+      state.applyBlock(*block);
+      spdlog::info("  Replayed block {}", i);
+    }
+
+    // Verify the restored state
     spdlog::info("");
-    spdlog::info("Full lifecycle operational.");
-    spdlog::info("  Accounts: {} | Chain height: {} | Chain valid: {}",
-                 state.getAllAccounts().size(),
-                 chain.getHeight(),
+    spdlog::info("  Restored state:");
+    spdlog::info("  Alice: {} ODM (nonce: {})", state.getBalance(aliceAddr),
+                 state.getNonce(aliceAddr));
+    spdlog::info("  Bob:   {} ODM (nonce: {})", state.getBalance(bobAddr),
+                 state.getNonce(bobAddr));
+    spdlog::info("  Chain height: {}, Chain valid: {}", chain.getHeight(),
                  chain.validateChain() ? "YES" : "NO");
 
-    return 0;
+    // Also verify against stored state (for comparison)
+    auto storedAlice = store.loadAccountState(aliceAddr);
+    auto storedBob = store.loadAccountState(bobAddr);
+    if (storedAlice.has_value() && storedBob.has_value()) {
+      bool aliceMatch = (state.getBalance(aliceAddr) == storedAlice->balance);
+      bool bobMatch = (state.getBalance(bobAddr) == storedBob->balance);
+      spdlog::info("");
+      spdlog::info("  State verification:");
+      spdlog::info("    Alice balance matches stored: {}",
+                   aliceMatch ? "YES" : "NO");
+      spdlog::info("    Bob balance matches stored:   {}",
+                   bobMatch ? "YES" : "NO");
+    }
+  }
+
+  // Clean up demo database
+  std::filesystem::remove_all(dbPath);
+
+  spdlog::info("");
+  spdlog::info("Persistence demo complete. Data survived simulated restart.");
+
+  return 0;
 }

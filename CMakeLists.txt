@@ -55,6 +55,8 @@ add_library(titancore_lib STATIC
     src/core/blockchain.cpp
     src/core/state.cpp
     src/core/mempool.cpp
+    # --- Storage module ---
+    src/storage/storage.cpp
 )
 
 # Tell the compiler where to find our header files.
@@ -72,6 +74,7 @@ target_link_libraries(titancore_lib PUBLIC
     nlohmann_json::nlohmann_json
     OpenSSL::Crypto          # SHA-256 hashing (libcrypto)
     secp256k1                # Elliptic curve key ops + ECDSA
+    leveldb                  # Key-value storage (blockchain persistence)
 )
 
 # --- Define the Main Executable -----------------------------------------------
