@@ -19,12 +19,8 @@
 //   - Chain linkage: Block N+1's previousHash must equal Block N's hash
 //   - Block integrity: Every block must pass verifyBlock()
 //   - Genesis consistency: The chain always starts with a valid genesis block
-//
-// WHAT IT DOES NOT DO (yet):
-//   - Persistent storage (chain is in-memory, lost on shutdown)
-//   - Consensus (which validator's turn is it?)
-//   - State management (tracking account balances)
-//   - Fork resolution (handling competing chains)
+//   - PoA authority: When consensus is enabled, the correct authority must
+//     produce each block according to the round-robin schedule
 //
 // STORAGE:
 //   For V1, the chain is stored in a std::vector<Block>. This is:
@@ -55,6 +51,9 @@
 namespace titancore {
 namespace core {
 
+// Forward declaration to avoid circular include
+class PoAConsensus;
+
 class Blockchain {
 public:
     // =========================================================================
@@ -71,25 +70,31 @@ public:
     // and getHeight() returns 1.
     explicit Blockchain(const crypto::KeyPair& genesisValidator);
 
+    // Initialize with PoA consensus enforcement.
+    //
+    // When constructed with a PoAConsensus pointer, addBlock() will
+    // additionally check that each block's validator matches the
+    // expected producer from the round-robin schedule.
+    //
+    // The PoAConsensus must outlive the Blockchain.
+    Blockchain(const crypto::KeyPair& genesisValidator,
+               PoAConsensus* consensus);
+
     // =========================================================================
     // Adding Blocks
     // =========================================================================
 
     // Attempt to add a block to the chain.
     //
-    // Performs three validation checks:
+    // Performs validation checks:
     //   1. INDEX: block.index must equal chain_.size() (next sequential index)
     //   2. LINKAGE: block.previousHash must equal the latest block's hash
     //   3. INTEGRITY: verifyBlock(block) must pass
+    //   4. AUTHORITY: if PoA is enabled, the block's validator must match
+    //      the expected producer for this index (round-robin schedule)
     //
     // Returns true if the block was accepted, false if rejected.
     // On rejection, the chain is unchanged.
-    //
-    // WHY RETURN BOOL INSTEAD OF THROWING?
-    //   In a distributed system, invalid blocks are routine — a malicious
-    //   peer might send garbage, or a block might arrive out of order.
-    //   Throwing exceptions for expected behavior is bad practice.
-    //   The caller checks the return value and logs/handles accordingly.
     bool addBlock(const Block& block);
 
     // Return a human-readable reason why the last addBlock() call failed.
@@ -176,6 +181,11 @@ private:
 
     // Human-readable error message from the last failed addBlock() call.
     std::string lastError_;
+
+    // Optional PoA consensus enforcer.
+    // When non-null, addBlock() checks the authority schedule.
+    // When null, any valid block is accepted (V0 behavior).
+    PoAConsensus* consensus_ = nullptr;
 };
 
 } // namespace core

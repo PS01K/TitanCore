@@ -32,6 +32,7 @@
 // =============================================================================
 
 #include "titancore/core/blockchain.hpp"
+#include "titancore/core/consensus.hpp"
 #include "titancore/crypto/hash.hpp"
 
 #include <spdlog/spdlog.h>
@@ -45,12 +46,20 @@ namespace core {
 // =============================================================================
 
 Blockchain::Blockchain(const crypto::KeyPair& genesisValidator) {
-    // Create the genesis block and make it the first (and only) block
-    // in the chain. After this, the chain has height 1.
     Block genesis = createGenesisBlock(genesisValidator);
     chain_.push_back(std::move(genesis));
 
     spdlog::info("[Blockchain] Initialized with genesis block: {}",
+                 crypto::toHex(chain_[0].hash));
+}
+
+Blockchain::Blockchain(const crypto::KeyPair& genesisValidator,
+                       PoAConsensus* consensus)
+    : consensus_(consensus) {
+    Block genesis = createGenesisBlock(genesisValidator);
+    chain_.push_back(std::move(genesis));
+
+    spdlog::info("[Blockchain] Initialized with genesis block: {} (PoA enabled)",
                  crypto::toHex(chain_[0].hash));
 }
 
@@ -97,16 +106,23 @@ bool Blockchain::addBlock(const Block& block) {
     }
 
     // --- Check 3: Block integrity ---
-    //
-    // Delegate to verifyBlock() which checks:
-    //   - Hash matches header data
-    //   - Validator's public key matches their address
-    //   - Signature is valid
-    //   - All transactions are valid
     if (!verifyBlock(block)) {
         lastError_ = "Block failed integrity verification (verifyBlock)";
         spdlog::warn("[Blockchain] Block rejected: {}", lastError_);
         return false;
+    }
+
+    // --- Check 4: PoA authority (if consensus is enabled) ---
+    //
+    // When a PoAConsensus is configured, the block's validator must be
+    // the authority designated for this block index by the round-robin
+    // schedule. A valid signature from the WRONG authority is rejected.
+    if (consensus_ != nullptr) {
+        if (!consensus_->validateBlock(block)) {
+            lastError_ = "PoA violation: " + consensus_->getLastError();
+            spdlog::warn("[Blockchain] Block rejected: {}", lastError_);
+            return false;
+        }
     }
 
     // --- All checks passed — accept the block ---

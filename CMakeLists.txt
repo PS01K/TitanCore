@@ -55,6 +55,7 @@ add_library(titancore_lib STATIC
     src/core/blockchain.cpp
     src/core/state.cpp
     src/core/mempool.cpp
+    src/core/consensus.cpp
     # --- Storage module ---
     src/storage/storage.cpp
 )

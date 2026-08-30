@@ -1,0 +1,5 @@
+if(EXISTS "/Users/ps/Desktop/Projects/TitanCore/tests/titancore_tests_e3b0c442_tests.cmake")
+  include("/Users/ps/Desktop/Projects/TitanCore/tests/titancore_tests_e3b0c442_tests.cmake")
+else()
+  add_test(titancore_tests_NOT_BUILT titancore_tests_NOT_BUILT)
+endif()

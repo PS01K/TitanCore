@@ -20,6 +20,7 @@ add_executable(titancore_tests
     core/test_blockchain.cpp
     core/test_state.cpp
     core/test_mempool.cpp
+    core/test_consensus.cpp
     storage/test_storage.cpp
 )
 
