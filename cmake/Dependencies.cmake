@@ -85,14 +85,6 @@ FetchContent_Declare(
 # at Google (the same engineers behind MapReduce and BigTable).
 #
 # Originally used by Bitcoin Core for block/transaction indexing.
-# LevelDB uses an LSM-tree (Log-Structured Merge Tree) architecture:
-#   Writes → in-memory buffer (memtable)
-#   Background flush → sorted on-disk files (SSTables)
-#   Reads → check memtable first, then SSTables
-#
-# This gives excellent write throughput, which is ideal for blockchains
-# that are constantly appending new blocks.
-#
 # We disable tests, benchmarks, and installation to keep build times short.
 # https://github.com/google/leveldb
 set(LEVELDB_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -106,8 +98,45 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 
+# --- ASIO (Standalone Networking) ---------------------------------------------
+
+# Asynchronous I/O library by Christopher Kohlhoff — the de facto standard
+# for C++ networking. It's the basis of the C++ Networking TS.
+#
+# We use the STANDALONE version (no Boost dependency). It's header-only,
+# so we just need the include path — no compilation step.
+#
+# ASIO uses an event-driven model:
+#   io_context::run()  → event loop (blocks until work is done)
+#   async_read/write   → non-blocking operations with callbacks
+#   post()             → schedule work on the event loop thread
+#
+# https://github.com/chriskohlhoff/asio
+FetchContent_Declare(
+    asio
+    GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+    GIT_TAG        asio-1-30-2
+    GIT_SHALLOW    TRUE
+)
+# ASIO is header-only — we use Populate (not MakeAvailable) because ASIO
+# doesn't ship a standard CMakeLists.txt we want to add to our build.
+FetchContent_GetProperties(asio)
+if(NOT asio_POPULATED)
+    FetchContent_Populate(asio)
+endif()
+
+# Create an INTERFACE library so consumers can just link against "asio_lib"
+add_library(asio_lib INTERFACE)
+target_include_directories(asio_lib INTERFACE "${asio_SOURCE_DIR}/asio/include")
+target_compile_definitions(asio_lib INTERFACE
+    ASIO_STANDALONE        # No Boost dependency
+    ASIO_NO_DEPRECATED     # Don't use deprecated APIs
+)
+find_package(Threads REQUIRED)
+target_link_libraries(asio_lib INTERFACE Threads::Threads)
+
 # --- Download and make all dependencies available ---
 # This is where the actual downloading happens (on first cmake configure).
 # Subsequent configures use the cached versions in build/_deps/.
+# Note: ASIO is NOT in this list — it's handled separately above.
 FetchContent_MakeAvailable(spdlog json googletest secp256k1 leveldb)
-

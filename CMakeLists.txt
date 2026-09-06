@@ -58,6 +58,11 @@ add_library(titancore_lib STATIC
     src/core/consensus.cpp
     # --- Storage module ---
     src/storage/storage.cpp
+    # --- Net module ---
+    src/net/message.cpp
+    src/net/peer_session.cpp
+    src/net/network_manager.cpp
+    src/net/node.cpp
 )
 
 # Tell the compiler where to find our header files.
@@ -76,6 +81,7 @@ target_link_libraries(titancore_lib PUBLIC
     OpenSSL::Crypto          # SHA-256 hashing (libcrypto)
     secp256k1                # Elliptic curve key ops + ECDSA
     leveldb                  # Key-value storage (blockchain persistence)
+    asio_lib                 # Async I/O networking (header-only)
 )
 
 # --- Define the Main Executable -----------------------------------------------

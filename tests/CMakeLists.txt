@@ -22,6 +22,8 @@ add_executable(titancore_tests
     core/test_mempool.cpp
     core/test_consensus.cpp
     storage/test_storage.cpp
+    net/test_message.cpp
+    net/test_node.cpp
 )
 
 # Link against GoogleTest and our library.
