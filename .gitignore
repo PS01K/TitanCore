@@ -35,3 +35,4 @@ _deps/
 # Package manager artifacts
 vcpkg_installed/
 conan/
+demo_data/

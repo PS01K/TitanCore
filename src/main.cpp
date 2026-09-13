@@ -114,7 +114,7 @@ int main() {
 
   // auth1 → auth2: 200 ODM
   Transaction tx2 =
-      createTransaction(auth1, addr2, 200, node0->getNonce(addr1));
+      createTransaction(auth1, addr2, 200, node1->getNonce(addr1));
   ok = node1->submitTransaction(tx2);
   spdlog::info("  auth1 → auth2: 200 ODM (accepted: {})", ok ? "YES" : "NO");
 
