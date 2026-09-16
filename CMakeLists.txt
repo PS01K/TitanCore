@@ -49,6 +49,7 @@ add_library(titancore_lib STATIC
     # --- Crypto module ---
     src/crypto/hash.cpp
     src/crypto/keys.cpp
+    src/crypto/key_io.cpp
     # --- Core module ---
     src/core/transaction.cpp
     src/core/block.cpp
@@ -63,6 +64,7 @@ add_library(titancore_lib STATIC
     src/net/peer_session.cpp
     src/net/network_manager.cpp
     src/net/node.cpp
+    src/net/genesis_config.cpp
 )
 
 # Tell the compiler where to find our header files.

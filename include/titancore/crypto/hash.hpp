@@ -76,6 +76,13 @@ std::string toHex(const Bytes& data);
 // Example: "a1b2" → Bytes{0xa1, 0xb2}
 Bytes fromHex(const std::string& hex);
 
+// Convert a hex string to a fixed-size byte array.
+// Throws std::invalid_argument if the hex string doesn't decode to exactly N bytes.
+//
+// Example: fromHexFixed<32>("a1b2...") → PrivateKey{0xa1, 0xb2, ...}
+template<std::size_t N>
+std::array<uint8_t, N> fromHexFixed(const std::string& hex);
+
 // =============================================================================
 // Template Implementation
 // =============================================================================
@@ -106,5 +113,19 @@ std::string toHex(const std::array<uint8_t, N>& data) {
     return hex;
 }
 
+template<std::size_t N>
+std::array<uint8_t, N> fromHexFixed(const std::string& hex) {
+    Bytes bytes = fromHex(hex);
+    if (bytes.size() != N) {
+        throw std::invalid_argument(
+            "fromHexFixed: expected " + std::to_string(N) + " bytes, got " +
+            std::to_string(bytes.size()));
+    }
+    std::array<uint8_t, N> result{};
+    std::copy(bytes.begin(), bytes.end(), result.begin());
+    return result;
+}
+
 } // namespace crypto
 } // namespace titancore
+

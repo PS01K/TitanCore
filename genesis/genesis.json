@@ -1,0 +1,20 @@
+{
+  "authorities": [
+    {
+      "address": "57c81e4a5e5364ea3929a6a53a19c44069bb1e0a",
+      "allocation": 10000,
+      "publicKey": "035ed01c5a632b325be4a1181e6c955533374430d51b714fb60a7d7a45112bfd77"
+    },
+    {
+      "address": "5d4509597033e930c6ec590f30bc8904c5a61e6f",
+      "allocation": 10000,
+      "publicKey": "024b456c34fb6f7d0c37e82839c026bf45d7975048e9a7383b096e25fcc62aba44"
+    },
+    {
+      "address": "c27c3ab866f59cec43fe73426f86fb48d07f3287",
+      "allocation": 10000,
+      "publicKey": "02049af3121053b33ca8556945f4fc5ba448d51f657efa3025661109946c062dad"
+    }
+  ],
+  "genesisValidatorPrivateKey": "c1fcddc4e9e640f62b07b9bd6ea963fa2d00eb3bc49f99accb4f9e19b8209765"
+}
