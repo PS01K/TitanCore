@@ -24,6 +24,7 @@ add_executable(titancore_tests
     storage/test_storage.cpp
     net/test_message.cpp
     net/test_node.cpp
+    rpc/test_rpc_server.cpp
 )
 
 # Link against GoogleTest and our library.

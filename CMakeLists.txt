@@ -65,6 +65,8 @@ add_library(titancore_lib STATIC
     src/net/network_manager.cpp
     src/net/node.cpp
     src/net/genesis_config.cpp
+    # --- RPC module ---
+    src/rpc/rpc_server.cpp
 )
 
 # Tell the compiler where to find our header files.
@@ -84,6 +86,7 @@ target_link_libraries(titancore_lib PUBLIC
     secp256k1                # Elliptic curve key ops + ECDSA
     leveldb                  # Key-value storage (blockchain persistence)
     asio_lib                 # Async I/O networking (header-only)
+    httplib::httplib         # HTTP server for JSON-RPC
 )
 
 # --- Define the Main Executable -----------------------------------------------

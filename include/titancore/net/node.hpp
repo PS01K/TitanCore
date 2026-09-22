@@ -119,6 +119,9 @@ public:
     uint64_t getNonce(const Address& addr) const;
     std::string getLastError() const;
 
+    // Get a block by index. Throws std::out_of_range if index is invalid.
+    core::Block getBlock(uint64_t index) const;
+
 private:
     // =========================================================================
     // Message Handling

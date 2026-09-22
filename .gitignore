@@ -29,6 +29,8 @@ cmake_install.cmake
 Makefile
 compile_commands.json
 CTestTestfile.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
 Testing/
 _deps/
 

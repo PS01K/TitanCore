@@ -291,6 +291,11 @@ std::string Node::getLastError() const {
     return lastError_;
 }
 
+core::Block Node::getBlock(uint64_t index) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return blockchain_->getBlock(index);
+}
+
 // =============================================================================
 // Message Handling
 // =============================================================================

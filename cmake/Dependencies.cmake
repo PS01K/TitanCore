@@ -135,8 +135,20 @@ target_compile_definitions(asio_lib INTERFACE
 find_package(Threads REQUIRED)
 target_link_libraries(asio_lib INTERFACE Threads::Threads)
 
+# --- cpp-httplib (HTTP Server) ------------------------------------------------
+# A header-only C++ HTTP/HTTPS library. Single-file, no external dependencies.
+# Used for the JSON-RPC server so external clients can query the node.
+# https://github.com/yhirose/cpp-httplib
+set(HTTPLIB_COMPILE OFF CACHE BOOL "" FORCE)  # Header-only mode
+FetchContent_Declare(
+    httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib.git
+    GIT_TAG        v0.18.3
+    GIT_SHALLOW    TRUE
+)
+
 # --- Download and make all dependencies available ---
 # This is where the actual downloading happens (on first cmake configure).
 # Subsequent configures use the cached versions in build/_deps/.
 # Note: ASIO is NOT in this list — it's handled separately above.
-FetchContent_MakeAvailable(spdlog json googletest secp256k1 leveldb)
+FetchContent_MakeAvailable(spdlog json googletest secp256k1 leveldb httplib)

@@ -23,6 +23,7 @@
 #include "titancore/crypto/keys.hpp"
 #include "titancore/net/genesis_config.hpp"
 #include "titancore/net/node.hpp"
+#include "titancore/rpc/rpc_server.hpp"
 #include <spdlog/spdlog.h>
 
 #include <atomic>
@@ -57,6 +58,7 @@ struct CliArgs {
   // Node mode
   int index = -1; // -1 = not set (run demo mode)
   uint16_t port = 9000;
+  uint16_t rpcPort = 8545;
   std::string dataDir = "";
   std::vector<std::pair<std::string, uint16_t>> peers;
 };
@@ -81,6 +83,8 @@ static CliArgs parseArgs(int argc, char *argv[]) {
       args.port = static_cast<uint16_t>(std::stoi(argv[++i]));
     } else if (arg == "--data-dir" && i + 1 < argc) {
       args.dataDir = argv[++i];
+    } else if (arg == "--rpc-port" && i + 1 < argc) {
+      args.rpcPort = static_cast<uint16_t>(std::stoi(argv[++i]));
     } else if (arg == "--peers" && i + 1 < argc) {
       // Parse comma-separated host:port pairs
       std::string peersStr = argv[++i];
@@ -120,6 +124,7 @@ static void printUsage() {
       << "  --port P           Listen port (default: 9000)\n"
       << "  --peers H:P,...    Comma-separated peer addresses\n"
       << "  --data-dir DIR     LevelDB data directory\n"
+      << "  --rpc-port P       JSON-RPC HTTP port (default: 8545)\n"
       << "  --genesis-dir DIR  Genesis config directory (default: "
          "genesis/)\n\n";
 }
@@ -234,6 +239,10 @@ static int runNode(const CliArgs &args) {
 
   node->start();
 
+  // Start JSON-RPC server
+  titancore::rpc::RpcServer rpcServer(*node, args.rpcPort);
+  rpcServer.start();
+
   // Connect to configured peers
   for (const auto &[host, port] : args.peers) {
     spdlog::info("[Main] Connecting to peer {}:{}...", host, port);
@@ -247,6 +256,7 @@ static int runNode(const CliArgs &args) {
   spdlog::info("");
   spdlog::info("=============================================");
   spdlog::info("  Node {} running on port {}", args.index, args.port);
+  spdlog::info("  RPC server on port {}", args.rpcPort);
   spdlog::info("  Press Ctrl+C to shut down");
   spdlog::info("=============================================");
   spdlog::info("");
@@ -262,6 +272,7 @@ static int runNode(const CliArgs &args) {
 
   spdlog::info("");
   spdlog::info("Shutting down...");
+  rpcServer.stop();
   node.reset();
   spdlog::info("Node stopped.");
 
