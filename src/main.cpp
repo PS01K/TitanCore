@@ -2,7 +2,7 @@
 // TitanCore Node — Entry Point
 // =============================================================================
 //
-// Three modes of operation:
+// Four modes of operation:
 //
 //   1. BOOTSTRAP: Generate keys and genesis config for a new network
 //      ./titancore_node --generate-keys --count 3 --genesis-dir genesis/
@@ -11,8 +11,12 @@
 //      ./titancore_node --index 0 --port 9001 --peers 192.168.1.5:9002 \
 //                       --data-dir data/node0 --genesis-dir genesis/
 //
-//   3. DEMO: Run the 3-node-in-one-process demo (no args)
-//      ./titancore_node
+//   3. SIGN-TX: Create a signed transaction (offline, outputs JSON to stdout)
+//      ./titancore_node --sign-tx --key genesis/auth0.key \
+//                       --to <address> --amount 500 --nonce 0
+//
+//   4. HELP: Show usage information
+//      ./titancore_node --help
 //
 // =============================================================================
 
@@ -49,6 +53,7 @@ static void signalHandler(int /*signum*/) { g_running = false; }
 struct CliArgs {
   // Mode flags
   bool generateKeys = false;
+  bool signTx = false;
   bool showHelp = false;
 
   // Bootstrap mode
@@ -56,11 +61,17 @@ struct CliArgs {
   std::string genesisDir = "genesis/";
 
   // Node mode
-  int index = -1; // -1 = not set (run demo mode)
+  int index = -1;
   uint16_t port = 9000;
   uint16_t rpcPort = 8545;
   std::string dataDir = "";
   std::vector<std::pair<std::string, uint16_t>> peers;
+
+  // Sign-tx mode
+  std::string keyFile = "";
+  std::string toAddress = "";
+  uint64_t amount = 0;
+  uint64_t nonce = 0;
 };
 
 static CliArgs parseArgs(int argc, char *argv[]) {
@@ -73,6 +84,8 @@ static CliArgs parseArgs(int argc, char *argv[]) {
       args.showHelp = true;
     } else if (arg == "--generate-keys") {
       args.generateKeys = true;
+    } else if (arg == "--sign-tx") {
+      args.signTx = true;
     } else if (arg == "--count" && i + 1 < argc) {
       args.count = std::stoi(argv[++i]);
     } else if (arg == "--genesis-dir" && i + 1 < argc) {
@@ -85,6 +98,14 @@ static CliArgs parseArgs(int argc, char *argv[]) {
       args.dataDir = argv[++i];
     } else if (arg == "--rpc-port" && i + 1 < argc) {
       args.rpcPort = static_cast<uint16_t>(std::stoi(argv[++i]));
+    } else if (arg == "--key" && i + 1 < argc) {
+      args.keyFile = argv[++i];
+    } else if (arg == "--to" && i + 1 < argc) {
+      args.toAddress = argv[++i];
+    } else if (arg == "--amount" && i + 1 < argc) {
+      args.amount = std::stoull(argv[++i]);
+    } else if (arg == "--nonce" && i + 1 < argc) {
+      args.nonce = std::stoull(argv[++i]);
     } else if (arg == "--peers" && i + 1 < argc) {
       // Parse comma-separated host:port pairs
       std::string peersStr = argv[++i];
@@ -111,11 +132,12 @@ static void printUsage() {
   std::cout
       << "TitanCore Node v" << titancore::VERSION_STRING << "\n\n"
       << "Usage:\n"
-      << "  titancore_node                           Run 3-node demo "
-         "(localhost)\n"
       << "  titancore_node --generate-keys [options] Generate keys & genesis "
          "config\n"
-      << "  titancore_node --index N [options]       Run a single node\n\n"
+      << "  titancore_node --index N [options]       Run a single node\n"
+      << "  titancore_node --sign-tx [options]       Sign a transaction "
+         "(offline)\n"
+      << "  titancore_node --help                    Show this help\n\n"
       << "Bootstrap options:\n"
       << "  --count N          Number of authority key pairs (default: 3)\n"
       << "  --genesis-dir DIR  Output directory (default: genesis/)\n\n"
@@ -126,7 +148,21 @@ static void printUsage() {
       << "  --data-dir DIR     LevelDB data directory\n"
       << "  --rpc-port P       JSON-RPC HTTP port (default: 8545)\n"
       << "  --genesis-dir DIR  Genesis config directory (default: "
-         "genesis/)\n\n";
+         "genesis/)\n\n"
+      << "Sign-tx options:\n"
+      << "  --key FILE         Sender's private key file\n"
+      << "  --to ADDRESS       Recipient address (hex)\n"
+      << "  --amount N         Amount of ODM to send\n"
+      << "  --nonce N          Sender's current nonce\n\n"
+      << "Examples:\n"
+      << "  # Generate keys for a 3-node network\n"
+      << "  titancore_node --generate-keys --count 3\n\n"
+      << "  # Run node 0\n"
+      << "  titancore_node --index 0 --port 9001 --peers "
+         "192.168.1.5:9002\n\n"
+      << "  # Sign a transaction offline\n"
+      << "  titancore_node --sign-tx --key genesis/auth0.key \\\n"
+      << "    --to a1b2c3... --amount 500 --nonce 0\n\n";
 }
 
 // =============================================================================
@@ -280,175 +316,44 @@ static int runNode(const CliArgs &args) {
 }
 
 // =============================================================================
-// Mode 3: Legacy Demo (3 nodes in one process)
+// Mode 3: Sign Transaction (offline)
 // =============================================================================
 
-static int runDemo() {
+static int runSignTx(const CliArgs &args) {
   using namespace titancore;
   using namespace titancore::crypto;
   using namespace titancore::core;
-  using namespace titancore::net;
 
-  // ---- Clean up previous demo data ----
-  std::filesystem::remove_all("demo_data");
-  std::filesystem::create_directories("demo_data/node0");
-  std::filesystem::create_directories("demo_data/node1");
-  std::filesystem::create_directories("demo_data/node2");
+  // Validate required arguments
+  if (args.keyFile.empty()) {
+    spdlog::error("--sign-tx requires --key <file>");
+    return 1;
+  }
+  if (args.toAddress.empty()) {
+    spdlog::error("--sign-tx requires --to <address>");
+    return 1;
+  }
+  if (args.amount == 0) {
+    spdlog::error("--sign-tx requires --amount <N> (must be > 0)");
+    return 1;
+  }
 
-  // ---- Step 1: Create three authority nodes ----
+  // Load sender's private key
+  PrivateKey privKey = loadPrivateKey(args.keyFile);
+  KeyPair senderKeys;
+  senderKeys.privateKey = privKey;
+  senderKeys.publicKey = derivePublicKey(privKey);
 
-  spdlog::info("");
-  spdlog::info("=== Step 1: Create 3 authority nodes ===");
+  // Parse recipient address
+  Address recipient = fromHexFixed<20>(args.toAddress);
 
-  KeyPair auth0 = generateKeyPair();
-  KeyPair auth1 = generateKeyPair();
-  KeyPair auth2 = generateKeyPair();
-  Address addr0 = deriveAddress(auth0.publicKey);
-  Address addr1 = deriveAddress(auth1.publicKey);
-  Address addr2 = deriveAddress(auth2.publicKey);
+  // Create the signed transaction
+  Transaction tx = createTransaction(senderKeys, recipient,
+                                     args.amount, args.nonce);
 
-  spdlog::info("  Authority 0: {}", toHex(addr0));
-  spdlog::info("  Authority 1: {}", toHex(addr1));
-  spdlog::info("  Authority 2: {}", toHex(addr2));
-
-  std::vector<Address> authorities = {addr0, addr1, addr2};
-  AddressMap<uint64_t> allocations;
-  allocations[addr0] = 10000;
-  allocations[addr1] = 10000;
-  allocations[addr2] = 10000;
-
-  // ---- Step 2: Start all nodes with LevelDB persistence ----
-
-  spdlog::info("");
-  spdlog::info("=== Step 2: Start nodes (with LevelDB) ===");
-
-  auto node0 = std::make_unique<Node>(auth0, auth0, authorities, allocations,
-                                      9001, "demo_data/node0");
-  auto node1 = std::make_unique<Node>(auth1, auth0, authorities, allocations,
-                                      9002, "demo_data/node1");
-  auto node2 = std::make_unique<Node>(auth2, auth0, authorities, allocations,
-                                      9003, "demo_data/node2");
-
-  node0->start();
-  node1->start();
-  node2->start();
-
-  // Connect in mesh: node1→node0, node2→node0
-  node1->connectToPeer("127.0.0.1", 9001);
-  node2->connectToPeer("127.0.0.1", 9001);
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-  spdlog::info("  Peers: node0={}, node1={}, node2={}", node0->getPeerCount(),
-               node1->getPeerCount(), node2->getPeerCount());
-
-  // ---- Step 3: Show initial balances ----
-
-  spdlog::info("");
-  spdlog::info("=== Step 3: Initial balances ===");
-  spdlog::info("  Auth0: {} ODM", node0->getBalance(addr0));
-  spdlog::info("  Auth1: {} ODM", node0->getBalance(addr1));
-  spdlog::info("  Auth2: {} ODM", node0->getBalance(addr2));
-
-  // ---- Step 4: Submit real transactions ----
-
-  spdlog::info("");
-  spdlog::info("=== Step 4: Submit transactions ===");
-
-  // auth0 → auth1: 500 ODM
-  Transaction tx1 =
-      createTransaction(auth0, addr1, 500, node0->getNonce(addr0));
-  bool ok = node0->submitTransaction(tx1);
-  spdlog::info("  auth0 → auth1: 500 ODM (accepted: {})", ok ? "YES" : "NO");
-
-  // auth1 → auth2: 200 ODM
-  Transaction tx2 =
-      createTransaction(auth1, addr2, 200, node1->getNonce(addr1));
-  ok = node1->submitTransaction(tx2);
-  spdlog::info("  auth1 → auth2: 200 ODM (accepted: {})", ok ? "YES" : "NO");
-
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
-  spdlog::info("  Mempool: node0={}, node1={}, node2={}",
-               node0->getMempoolSize(), node1->getMempoolSize(),
-               node2->getMempoolSize());
-
-  // ---- Step 5: Produce blocks ----
-
-  spdlog::info("");
-  spdlog::info("=== Step 5: Produce blocks (round-robin) ===");
-
-  spdlog::info("  --- Block 1 (Authority 1's turn) ---");
-  ok = node1->produceBlock();
-  spdlog::info("  Produced: {}", ok ? "YES" : "NO");
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  spdlog::info("  Heights: node0={}, node1={}, node2={}",
-               node0->getChainHeight(), node1->getChainHeight(),
-               node2->getChainHeight());
-
-  spdlog::info("  --- Block 2 (Authority 2's turn) ---");
-  ok = node2->produceBlock();
-  spdlog::info("  Produced: {}", ok ? "YES" : "NO");
-  std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  spdlog::info("  Heights: node0={}, node1={}, node2={}",
-               node0->getChainHeight(), node1->getChainHeight(),
-               node2->getChainHeight());
-
-  // ---- Step 6: Verify balances across all nodes ----
-
-  spdlog::info("");
-  spdlog::info("=== Step 6: Verify balances ===");
-  spdlog::info("  Expected: auth0=9500, auth1=10300, auth2=10200");
-  spdlog::info("");
-  spdlog::info("  Node 0 view:");
-  spdlog::info("    auth0={}, auth1={}, auth2={}", node0->getBalance(addr0),
-               node0->getBalance(addr1), node0->getBalance(addr2));
-  spdlog::info("  Node 1 view:");
-  spdlog::info("    auth0={}, auth1={}, auth2={}", node1->getBalance(addr0),
-               node1->getBalance(addr1), node1->getBalance(addr2));
-  spdlog::info("  Node 2 view:");
-  spdlog::info("    auth0={}, auth1={}, auth2={}", node2->getBalance(addr0),
-               node2->getBalance(addr1), node2->getBalance(addr2));
-
-  spdlog::info("");
-  spdlog::info("  Chain valid: node0={}, node1={}, node2={}",
-               node0->isChainValid() ? "YES" : "NO",
-               node1->isChainValid() ? "YES" : "NO",
-               node2->isChainValid() ? "YES" : "NO");
-
-  // ---- Step 7: Destroy all nodes ----
-
-  spdlog::info("");
-  spdlog::info("=== Step 7: Shut down all nodes ===");
-  node0.reset();
-  node1.reset();
-  node2.reset();
-  spdlog::info("  All nodes destroyed (LevelDB locks released).");
-
-  // ---- Step 8: Restart node0 from LevelDB ----
-
-  spdlog::info("");
-  spdlog::info("=== Step 8: Restart node0 from LevelDB ===");
-
-  auto node0_restarted = std::make_unique<Node>(
-      auth0, auth0, authorities, allocations, 9010, "demo_data/node0");
-  node0_restarted->start();
-
-  spdlog::info("  Recovered chain height: {}",
-               node0_restarted->getChainHeight());
-  spdlog::info("  Recovered balances:");
-  spdlog::info(
-      "    auth0={}, auth1={}, auth2={}", node0_restarted->getBalance(addr0),
-      node0_restarted->getBalance(addr1), node0_restarted->getBalance(addr2));
-
-  node0_restarted.reset();
-
-  // ---- Summary ----
-
-  spdlog::info("");
-  spdlog::info("=============================================");
-  spdlog::info("  Multi-node demo complete.");
-  spdlog::info("  3 nodes, real transactions, LevelDB persistence.");
-  spdlog::info("=============================================");
+  // Output the signed transaction JSON to stdout
+  // (Use cout, not spdlog, so the output is clean JSON for piping)
+  std::cout << toJson(tx).dump() << std::endl;
 
   return 0;
 }
@@ -460,11 +365,23 @@ static int runDemo() {
 int main(int argc, char *argv[]) {
   spdlog::set_level(spdlog::level::info);
 
-  spdlog::info("=============================================");
-  spdlog::info("  {} v{}", titancore::PROJECT_NAME, titancore::VERSION_STRING);
-  spdlog::info("  Native Currency: {} ({})", titancore::CURRENCY_NAME,
-               titancore::CURRENCY_SYMBOL);
-  spdlog::info("=============================================");
+  // Don't print the banner for --sign-tx (stdout must be clean JSON)
+  bool isSigning = false;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string(argv[i]) == "--sign-tx") {
+      isSigning = true;
+      break;
+    }
+  }
+
+  if (!isSigning) {
+    spdlog::info("=============================================");
+    spdlog::info("  {} v{}", titancore::PROJECT_NAME,
+                 titancore::VERSION_STRING);
+    spdlog::info("  Native Currency: {} ({})", titancore::CURRENCY_NAME,
+                 titancore::CURRENCY_SYMBOL);
+    spdlog::info("=============================================");
+  }
 
   CliArgs args = parseArgs(argc, argv);
 
@@ -477,10 +394,15 @@ int main(int argc, char *argv[]) {
     return runGenerateKeys(args);
   }
 
+  if (args.signTx) {
+    return runSignTx(args);
+  }
+
   if (args.index >= 0) {
     return runNode(args);
   }
 
-  // No mode flags — run legacy demo
-  return runDemo();
+  // No mode flags — show help
+  printUsage();
+  return 1;
 }

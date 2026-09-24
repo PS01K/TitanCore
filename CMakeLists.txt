@@ -20,7 +20,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(TitanCore
-    VERSION 0.1.0
+    VERSION 1.0.0
     DESCRIPTION "A permissioned blockchain with native ODM cryptocurrency"
     LANGUAGES CXX
 )

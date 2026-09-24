@@ -23,14 +23,14 @@
 
 namespace titancore {
 
-constexpr int VERSION_MAJOR = 0;
-constexpr int VERSION_MINOR = 1;
+constexpr int VERSION_MAJOR = 1;
+constexpr int VERSION_MINOR = 0;
 constexpr int VERSION_PATCH = 0;
 
 // std::string_view is a lightweight, non-owning reference to a string.
 // Unlike std::string, it doesn't allocate memory on the heap.
 // Perfect for compile-time string constants.
-constexpr std::string_view VERSION_STRING = "0.1.0";
+constexpr std::string_view VERSION_STRING = "1.0.0";
 constexpr std::string_view PROJECT_NAME   = "TitanCore";
 constexpr std::string_view CURRENCY_NAME  = "ODM";
 constexpr std::string_view CURRENCY_SYMBOL = "ODM";

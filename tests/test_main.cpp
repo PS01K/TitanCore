@@ -27,15 +27,15 @@
 // --- Version Tests -----------------------------------------------------------
 
 TEST(VersionTest, HasCorrectMajorVersion) {
-    EXPECT_EQ(titancore::VERSION_MAJOR, 0);
+    EXPECT_EQ(titancore::VERSION_MAJOR, 1);
 }
 
 TEST(VersionTest, HasCorrectMinorVersion) {
-    EXPECT_EQ(titancore::VERSION_MINOR, 1);
+    EXPECT_EQ(titancore::VERSION_MINOR, 0);
 }
 
 TEST(VersionTest, HasCorrectVersionString) {
-    EXPECT_EQ(titancore::VERSION_STRING, "0.1.0");
+    EXPECT_EQ(titancore::VERSION_STRING, "1.0.0");
 }
 
 TEST(VersionTest, HasCorrectProjectName) {
